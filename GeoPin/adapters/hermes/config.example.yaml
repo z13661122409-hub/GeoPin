@@ -1,0 +1,6 @@
+mcp_servers:
+  geopin:
+    command: "uvx"
+    args: ["--from", ".", "geopin", "mcp", "--viewer-port", "4173"]
+    tools:
+      include: [resolve_place, show_pin, resolve_and_show]

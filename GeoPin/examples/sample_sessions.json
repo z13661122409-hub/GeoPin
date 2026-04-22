@@ -1,0 +1,16 @@
+{
+  "points": [
+    {
+      "label": "Columbus, Ohio, USA",
+      "lat": 39.9612,
+      "lng": -82.9988,
+      "confidence": 0.98
+    },
+    {
+      "label": "Beijing, China",
+      "lat": 39.9042,
+      "lng": 116.4074,
+      "confidence": 0.99
+    }
+  ]
+}

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GeoPin Viewer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050816;
+        --panel: rgba(10, 16, 34, 0.82);
+        --panel-border: rgba(255, 255, 255, 0.08);
+        --text: #f6f8ff;
+        --muted: #b7bfd3;
+        --pin: #ff5a5f;
+      }
+
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: radial-gradient(circle at top, #0b1b3a 0%, var(--bg) 55%);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+      }
+
+      #globeViz {
+        width: 100vw;
+        height: 100vh;
+      }
+
+      .panel {
+        position: fixed;
+        left: 16px;
+        top: 16px;
+        z-index: 5;
+        width: min(420px, calc(100vw - 32px));
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.28);
+        border-radius: 18px;
+        padding: 14px 16px;
+        backdrop-filter: blur(10px);
+      }
+
+      .panel h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .panel p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .points {
+        margin-top: 12px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .point-row {
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .point-row strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .point-row span {
+        display: block;
+        margin-top: 2px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .pin {
+        position: relative;
+        width: 16px;
+        height: 16px;
+        background: var(--pin);
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        box-shadow: 0 0 20px rgba(255, 90, 95, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+      }
+
+      .pin::after {
+        content: "";
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: white;
+        top: 4px;
+        left: 4px;
+      }
+
+      .pin-label {
+        transform: translate(12px, -8px);
+        background: rgba(5, 8, 22, 0.88);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        padding: 6px 10px;
+        border-radius: 999px;
+        white-space: nowrap;
+        font-size: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      }
+
+      .status {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 5;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(5, 8, 22, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .error {
+        color: #ff9f9f;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h1>GeoPin</h1>
+      <p id="subtitle">Resolving viewer session…</p>
+      <div id="points" class="points"></div>
+    </div>
+    <div id="globeViz"></div>
+    <div id="status" class="status">Waiting for session…</div>
+
+    <script src="https://unpkg.com/globe.gl"></script>
+    <script>
+      const statusEl = document.getElementById("status");
+      const subtitleEl = document.getElementById("subtitle");
+      const pointsEl = document.getElementById("points");
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("session");
+
+      function setStatus(text, isError = false) {
+        statusEl.textContent = text;
+        statusEl.classList.toggle("error", isError);
+      }
+
+      function createPinElement(point) {
+        const wrap = document.createElement("div");
+        wrap.style.display = "flex";
+        wrap.style.alignItems = "center";
+        wrap.style.gap = "6px";
+
+        const pin = document.createElement("div");
+        pin.className = "pin";
+
+        const label = document.createElement("div");
+        label.className = "pin-label";
+        label.textContent = point.label;
+
+        wrap.appendChild(pin);
+        wrap.appendChild(label);
+        return wrap;
+      }
+
+      function renderPointList(points) {
+        pointsEl.innerHTML = "";
+        points.forEach((point) => {
+          const row = document.createElement("div");
+          row.className = "point-row";
+          row.innerHTML = `<strong>${point.label}</strong><span>${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}</span>`;
+          pointsEl.appendChild(row);
+        });
+      }
+
+      function midpoint(points) {
+        const total = points.reduce(
+          (acc, p) => {
+            acc.lat += p.lat;
+            acc.lng += p.lng;
+            return acc;
+          },
+          { lat: 0, lng: 0 }
+        );
+        return {
+          lat: total.lat / points.length,
+          lng: total.lng / points.length,
+        };
+      }
+
+      async function boot() {
+        if (!sessionId) {
+          subtitleEl.textContent = "No session id found in the URL.";
+          setStatus("Missing session", true);
+          return;
+        }
+
+        setStatus("Loading globe…");
+        const world = Globe()(document.getElementById("globeViz"))
+          .globeImageUrl("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg")
+          .bumpImageUrl("https://unpkg.com/three-globe/example/img/earth-topology.png")
+          .backgroundImageUrl("https://unpkg.com/three-globe/example/img/night-sky.png")
+          .showAtmosphere(true)
+          .atmosphereAltitude(0.18)
+          .htmlElementsData([])
+          .htmlLat((d) => d.lat)
+          .htmlLng((d) => d.lng)
+          .htmlElement((d) => createPinElement(d));
+
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.25;
+
+        try {
+          const response = await fetch(`/api/sessions/${sessionId}`);
+          if (!response.ok) throw new Error(`Session request failed: ${response.status}`);
+          const session = await response.json();
+          const points = session.points || [];
+
+          if (!points.length) {
+            subtitleEl.textContent = "This session has no points.";
+            setStatus("No points available", true);
+            return;
+          }
+
+          renderPointList(points);
+          world.htmlElementsData(points);
+
+          const center = midpoint(points);
+          const altitude = points.length > 1 ? 2.1 : 1.35;
+          world.pointOfView({ lat: center.lat, lng: center.lng, altitude }, 1800);
+
+          subtitleEl.textContent = `${points.length} point${points.length === 1 ? "" : "s"} on the globe.`;
+          setStatus("Viewer ready");
+        } catch (error) {
+          subtitleEl.textContent = "Could not load the viewer session.";
+          setStatus(String(error), true);
+        }
+      }
+
+      boot();
+    </script>
+  </body>
+</html>

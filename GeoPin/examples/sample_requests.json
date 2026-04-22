@@ -1,0 +1,10 @@
+[
+  {
+    "tool": "resolve_place",
+    "input": {"place_text": "Ohio State University"}
+  },
+  {
+    "tool": "resolve_and_show",
+    "input": {"places": ["Tokyo", "Beijing"]}
+  }
+]
